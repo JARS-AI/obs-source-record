@@ -250,7 +250,11 @@ static void start_stream_output_task(void *data)
 
 void release_output_stopped(void *data, calldata_t *cd)
 {
-	UNUSED_PARAMETER(cd);
+	obs_output_t *output = data;
+	signal_handler_t *sh = obs_output_get_signal_handler(output);
+	if (sh)
+		signal_handler_disconnect(sh, "stop", release_output_stopped, output);
+
 	run_queued((obs_task_t)obs_output_release, data);
 }
 
