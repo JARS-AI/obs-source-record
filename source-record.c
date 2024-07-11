@@ -924,6 +924,24 @@ static void source_record_filter_tick(void *data, float seconds)
 	width += (width & 1);
 	uint32_t height = obs_source_get_height(parent);
 	height += (height & 1);
+
+	if (width == 0 || height == 0) {
+		if (context->fileOutput) {
+			run_queued(stop_output_task, context->fileOutput);
+			context->fileOutput = NULL;
+		}
+		if (context->streamOutput) {
+			run_queued(stop_output_task, context->streamOutput);
+			context->streamOutput = NULL;
+		}
+		if (context->replayOutput) {
+			run_queued(stop_output_task, context->replayOutput);
+			context->replayOutput = NULL;
+		}
+		context->output_active = false;
+		return;
+	}
+
 	if (context->width != width || context->height != height || (!context->video_output && width && height)) {
 		struct obs_video_info ovi = {0};
 		obs_get_video_info(&ovi);
