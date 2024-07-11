@@ -58,6 +58,11 @@ static void run_queued(obs_task_t task, void *param)
 	}
 }
 
+static void run_queued_ui(obs_task_t task, void *param)
+{
+		obs_queue_task(OBS_TASK_UI, task, param, false);
+}
+
 static const char *source_record_filter_get_name(void *unused)
 {
 	UNUSED_PARAMETER(unused);
@@ -248,32 +253,9 @@ static void start_stream_output_task(void *data)
 	context->starting_stream_output = false;
 }
 
-void release_output_stopped(void *data, calldata_t *cd)
-{
-	UNUSED_PARAMETER(cd);
-	run_queued((obs_task_t)obs_output_release, data);
-}
-
-static void stop_output_task(void *data)
-{
-	obs_output_t *output = data;
-	signal_handler_t *sh = obs_output_get_signal_handler(output);
-	if (sh)
-		signal_handler_connect(sh, "stop", release_output_stopped, output);
-	obs_output_stop(output);
-	if (!sh)
-		obs_output_release(output);
-}
-
 static void force_stop_output_task(void *data)
 {
-	obs_output_t *output = data;
-	signal_handler_t *sh = obs_output_get_signal_handler(output);
-	if (sh)
-		signal_handler_connect(sh, "stop", release_output_stopped, output);
-	obs_output_force_stop(output);
-	if (!sh)
-		obs_output_release(output);
+  obs_output_release((obs_output_t*)data);
 }
 
 static void start_replay_task(void *data)
@@ -612,7 +594,7 @@ static void source_record_filter_update(void *data, obs_data_t *settings)
 				start_file_output(filter, settings);
 		} else {
 			if (filter->fileOutput) {
-				run_queued(stop_output_task, filter->fileOutput);
+				run_queued_ui(force_stop_output_task, filter->fileOutput);
 				filter->fileOutput = NULL;
 			}
 		}
@@ -627,7 +609,7 @@ static void source_record_filter_update(void *data, obs_data_t *settings)
 			obs_data_t *hotkeys = obs_hotkeys_save_output(filter->replayOutput);
 			obs_data_set_obj(settings, "replay_hotkeys", hotkeys);
 			obs_data_release(hotkeys);
-			run_queued(force_stop_output_task, filter->replayOutput);
+			run_queued_ui(force_stop_output_task, filter->replayOutput);
 			filter->replayOutput = NULL;
 		}
 
@@ -637,7 +619,7 @@ static void source_record_filter_update(void *data, obs_data_t *settings)
 			obs_data_t *hotkeys = obs_hotkeys_save_output(filter->replayOutput);
 			obs_data_set_obj(settings, "replay_hotkeys", hotkeys);
 			obs_data_release(hotkeys);
-			run_queued(force_stop_output_task, filter->replayOutput);
+			run_queued_ui(force_stop_output_task, filter->replayOutput);
 			filter->replayOutput = NULL;
 			start_replay_output(filter, settings);
 		}
@@ -668,7 +650,7 @@ static void source_record_filter_update(void *data, obs_data_t *settings)
 				start_stream_output(filter, settings);
 		} else {
 			if (filter->streamOutput) {
-				run_queued(force_stop_output_task, filter->streamOutput);
+				run_queued_ui(force_stop_output_task, filter->streamOutput);
 				filter->streamOutput = NULL;
 			}
 		}
@@ -811,11 +793,11 @@ static void source_record_delayed_destroy(void *data)
 {
 	struct source_record_filter_context *context = data;
 	if (context->encoder && obs_encoder_active(context->encoder)) {
-		run_queued(source_record_delayed_destroy, context);
+		run_queued_ui(source_record_delayed_destroy, context);
 		return;
 	}
 	if (context->aacTrack && context->audio_track <= 0 && obs_encoder_active(context->aacTrack)) {
-		run_queued(source_record_delayed_destroy, context);
+		run_queued_ui(source_record_delayed_destroy, context);
 		return;
 	}
 
@@ -853,15 +835,15 @@ static void source_record_filter_destroy(void *data)
 	obs_frontend_remove_event_callback(frontend_event, context);
 
 	if (context->fileOutput) {
-		run_queued(force_stop_output_task, context->fileOutput);
+		run_queued_ui(force_stop_output_task, context->fileOutput);
 		context->fileOutput = NULL;
 	}
 	if (context->streamOutput) {
-		run_queued(force_stop_output_task, context->streamOutput);
+		run_queued_ui(force_stop_output_task, context->streamOutput);
 		context->streamOutput = NULL;
 	}
 	if (context->replayOutput) {
-		run_queued(force_stop_output_task, context->replayOutput);
+		run_queued_ui(force_stop_output_task, context->replayOutput);
 		context->replayOutput = NULL;
 	}
 
@@ -949,15 +931,15 @@ static void source_record_filter_tick(void *data, float seconds)
 
 	if (context->restart && context->output_active) {
 		if (context->fileOutput) {
-			run_queued(stop_output_task, context->fileOutput);
+			run_queued_ui(force_stop_output_task, context->fileOutput);
 			context->fileOutput = NULL;
 		}
 		if (context->streamOutput) {
-			run_queued(stop_output_task, context->streamOutput);
+			run_queued_ui(force_stop_output_task, context->streamOutput);
 			context->streamOutput = NULL;
 		}
 		if (context->replayOutput) {
-			run_queued(stop_output_task, context->replayOutput);
+			run_queued_ui(force_stop_output_task, context->replayOutput);
 			context->replayOutput = NULL;
 		}
 		context->output_active = false;
@@ -978,15 +960,15 @@ static void source_record_filter_tick(void *data, float seconds)
 		obs_data_release(s);
 	} else if (context->output_active && !obs_source_enabled(context->source)) {
 		if (context->fileOutput) {
-			run_queued(stop_output_task, context->fileOutput);
+			run_queued_ui(force_stop_output_task, context->fileOutput);
 			context->fileOutput = NULL;
 		}
 		if (context->streamOutput) {
-			run_queued(stop_output_task, context->streamOutput);
+			run_queued_ui(force_stop_output_task, context->streamOutput);
 			context->streamOutput = NULL;
 		}
 		if (context->replayOutput) {
-			run_queued(stop_output_task, context->replayOutput);
+			run_queued_ui(force_stop_output_task, context->replayOutput);
 			context->replayOutput = NULL;
 		}
 		context->output_active = false;
@@ -1213,15 +1195,15 @@ static void source_record_filter_filter_remove(void *data, obs_source_t *parent)
 	struct source_record_filter_context *context = data;
 	context->closing = true;
 	if (context->fileOutput) {
-		run_queued(force_stop_output_task, context->fileOutput);
+		run_queued_ui(force_stop_output_task, context->fileOutput);
 		context->fileOutput = NULL;
 	}
 	if (context->streamOutput) {
-		run_queued(force_stop_output_task, context->streamOutput);
+		run_queued_ui(force_stop_output_task, context->streamOutput);
 		context->streamOutput = NULL;
 	}
 	if (context->replayOutput) {
-		run_queued(force_stop_output_task, context->replayOutput);
+		run_queued_ui(force_stop_output_task, context->replayOutput);
 		context->replayOutput = NULL;
 	}
 	obs_frontend_remove_event_callback(frontend_event, context);
